@@ -210,7 +210,7 @@
         <div class="modal-content">
             <span class="close-button" id="closeModal">×</span>
             <h2>Información</h2>
-            <p>Herramienta para extraer la URL del archivo txt. Si el NOMBRE (LINK) tiene la mayor coincidencia, te entrega ese url con todos los datos del txt.</p>
+            <p>Herramienta para extraer la URL del archivo txt. Busca la mayor coincidencia inteligente basada en partes significativas del link.</p>
             <h1 class="linkpagina" data-url="https://mi-pg.vercel.app/login/">UnevennesX</h1>
         </div>
     </div>
@@ -252,30 +252,67 @@
                     .filter(entry => entry['Tipo de Survey'] === 'Survey.Emi');
             }
 
-            // Búsqueda de coincidencias (ahora por mayor coincidencia en el nombre)
-            function buscarPorCoincidencia(link) {
+
+            function calcularPuntuacion(urlIngresada, nombreItem) {
+                try {
+                    const urlObjIngresada = new URL(urlIngresada.startsWith('http') ? urlIngresada : `https://${urlIngresada}`);
+                    const urlObjItem = new URL(nombreItem.startsWith('http') ? nombreItem : `https://${nombreItem}`);
+
+                    let puntuacion = 0;
+
+                    // Coincidencia de dominio es muy importante
+                    if (urlObjIngresada.hostname === urlObjItem.hostname) {
+                        puntuacion += 0.5;
+                    }
+
+                    // Coincidencia de segmentos de path (más es mejor)
+                    const pathIngresada = urlObjIngresada.pathname.split('/').filter(Boolean);
+                    const pathItem = urlObjItem.pathname.split('/').filter(Boolean);
+
+                    let coincidenciasPath = 0;
+                    for (let i = 0; i < Math.min(pathIngresada.length, pathItem.length); i++) {
+                        if (pathIngresada[i] === pathItem[i]) {
+                            coincidenciasPath++;
+                        }
+                    }
+
+                    puntuacion += coincidenciasPath / Math.max(pathIngresada.length, pathItem.length) * 0.4;
+
+                    // Longitud del nombre favorece coincidencias más específicas si ya hay buena coincidencia
+                    if (nombreItem.length > urlIngresada.length && puntuacion > 0.6) {
+                        puntuacion += 0.1;
+                    }
+
+
+                    return puntuacion;
+
+                } catch (error) {
+                    console.error("Error al analizar URLs:", error);
+                    return 0; // No se puede analizar, no hay coincidencia
+                }
+            }
+
+
+
+            function buscarPorCoincidenciaInteligente(link) {
                 let mejorCoincidencia = null;
-                let maxCoincidencia = 0;
+                let mejorPuntuacion = 0;
 
                 for (const item of dataCache) {
-                  const nombreItem = item.Nombre;
-                  if (!nombreItem) continue; // Saltar si el item no tiene nombre
+                    const nombreItem = item.Nombre;
+                    if (!nombreItem) continue;
 
-                  let coincidencias = 0;
-                  for (let i = 0; i < Math.min(link.length, nombreItem.length); i++) {
-                    if (link[i].toLowerCase() === nombreItem[i].toLowerCase()) {
-                      coincidencias++;
+                    const puntuacion = calcularPuntuacion(link, nombreItem);
+
+
+                    if (puntuacion > mejorPuntuacion) {
+                        mejorPuntuacion = puntuacion;
+                        mejorCoincidencia = item;
                     }
-                  }
-
-                  if (coincidencias > maxCoincidencia) {
-                    maxCoincidencia = coincidencias;
-                    mejorCoincidencia = item;
-                  }
                 }
 
                 return mejorCoincidencia;
-              }
+            }
 
 
 
@@ -290,7 +327,7 @@
                         <h3>URL Encontrada</h3>
                         <p><strong>Tipo:</strong> ${match['Tipo de Survey']}</p>
                         <p><strong>Nombre:</strong> ${match.Nombre}</p>
-                        <p><strong>URL:</strong> 
+                        <p><strong>URL:</strong>
                             <span class="copy-link" data-link="${match.URL}">
                                 ${match.URL}
                             </span></p>
@@ -316,7 +353,7 @@
                         dataCache = await obtenerDatos();
                     }
 
-                    const coincidencia = buscarPorCoincidencia(link);
+                    const coincidencia = buscarPorCoincidenciaInteligente(link);
 
                     if (!coincidencia) {
                         resultadosDiv.innerHTML = '<div class="sugerencia error">No se encontró ninguna Survey.Emi coincidente en el .txt.</div>';
